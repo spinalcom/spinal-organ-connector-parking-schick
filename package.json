@@ -1,0 +1,31 @@
+{
+  "name": "spinal-organ-connector-parking-schick",
+  "version": "1.0.0",
+  "description": "Spinal connector – Schick Signal-Park parking API",
+  "main": "build/index.js",
+  "scripts": {
+    "build": "rm -rf ./build && tsc",
+    "start": "node index.js",
+    "dev": "tsc -w & nodemon index.js"
+  },
+  "dependencies": {
+    "axios": "^0.21.1",
+    "dotenv": "^8.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^10.17.60",
+    "ts-node": "^8.5.4",
+    "typescript": "^4.0.0"
+  },
+  "keywords": [],
+  "author": "SpinalCom",
+  "license": "Free_Software_License_Agreement.pdf",
+  "spinalDependencies": {
+    "spinal-core-connectorjs": "spinal-core-connectorjs",
+    "spinal-core-connectorjs_type": "spinal-core-connectorjs_type",
+    "spinal-env-viewer-graph-service": "Spinal-Graph-Service",
+    "spinal-env-viewer-plugin-documentation-service": "spinal-env-viewer-plugin-documentation-service",
+    "spinal-lib-organ-monitoring": "spinal-lib-organ-monitoring",
+    "spinal-model-bmsnetwork": "spinal-model-bmsnetwork"
+  }
+}
