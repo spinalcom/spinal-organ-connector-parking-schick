@@ -70,8 +70,8 @@ export class SyncService {
   private nwService: NetworkService;
   private nwContext!: SpinalContext<any>;
   private nwVirtual!: SpinalNode<any>;
-  private parkingsGroup!: SpinalNode<any>; // "Parkings" group device
-  private spacesGroup!: SpinalNode<any>;   // "Spaces"   group device
+  private spacesGroup!: SpinalNode<any>;   // "Spaces" group device
+  private typeGroups = new Map<string, SpinalNode<any>>(); // type → group device (site, parking, level…)
 
   private readonly schickClient: SchickClient;
   private running = false;
@@ -175,9 +175,8 @@ export class SyncService {
   // ── Groups ────────────────────────────────────────────────────────────────
 
   private async initGroups(): Promise<void> {
-    this.parkingsGroup = await this.getOrCreateGroupDevice('Parkings');
-    this.spacesGroup   = await this.getOrCreateGroupDevice('Spaces');
-    console.log('[init] Groups resolved (Parkings, Spaces)');
+    this.spacesGroup = await this.getOrCreateGroupDevice('Spaces');
+    console.log('[init] Spaces group resolved');
   }
 
   private async getOrCreateGroupDevice(name: string): Promise<SpinalNode<any>> {
@@ -188,16 +187,33 @@ export class SyncService {
     return this.createDevice(this.nwVirtual, name, 'Group');
   }
 
+  /** Get or create the group device for a parking type (one group per type). */
+  private async getOrCreateTypeGroup(type: string): Promise<SpinalNode<any>> {
+    const existing = this.typeGroups.get(type);
+    if (existing) return existing;
+    const group = await this.getOrCreateGroupDevice(type);
+    this.typeGroups.set(type, group);
+    return group;
+  }
+
   // ── Load existing devices from BOS ────────────────────────────────────────
 
   private async loadExistingParkings(): Promise<void> {
-    const children = await this.parkingsGroup.getChildren('hasBmsDevice');
-    for (const node of children) {
-      const id = this.extractSchickId(node.getName().get());
-      if (id === null) continue;
-      SpinalGraphService._addNode(node);
-      const endpoints = await this.loadExistingEndpoints(node);
-      this.parkingCache.set(id, { node, endpoints });
+    // Each child of the virtual network (except "Spaces") is a parking type group
+    const groups = await this.nwVirtual.getChildrenInContext(this.nwContext);
+    for (const group of groups) {
+      const groupName = group.getName().get();
+      if (groupName === 'Spaces') continue;
+      SpinalGraphService._addNode(group);
+      this.typeGroups.set(groupName, group);
+      const children = await group.getChildren('hasBmsDevice');
+      for (const node of children) {
+        const id = this.extractSchickId(node.getName().get());
+        if (id === null) continue;
+        SpinalGraphService._addNode(node);
+        const endpoints = await this.loadExistingEndpoints(node);
+        this.parkingCache.set(id, { node, endpoints });
+      }
     }
     console.log(`[init] ${this.parkingCache.size} existing parking devices loaded from BOS`);
   }
@@ -310,9 +326,10 @@ export class SyncService {
     let cache = this.parkingCache.get(entry.id);
 
     if (!cache) {
+      const group = await this.getOrCreateTypeGroup(entry.type);
       const deviceName = `${entry.type}_${entry.id}_${entry.name}`;
       console.log(`[spinal] Creating parking device: ${deviceName}`);
-      const node = await this.createDevice(this.parkingsGroup, deviceName, entry.type);
+      const node = await this.createDevice(group, deviceName, entry.type);
       cache = { node, endpoints: new Map() };
       this.parkingCache.set(entry.id, cache);
     }
@@ -328,12 +345,11 @@ export class SyncService {
     // Ensure base endpoints exist (created once, idempotent)
     await this.ensureParkingBaseEndpoints(cache);
 
-    // Dynamically ensure category endpoints for every active category (capacity > 0)
+    // Dynamically ensure category endpoints for EVERY category (including capacity = 0)
     for (const cat of entry.categoriesInfo) {
-      if (cat.capacity <= 0) continue;
       const catKey = this.catSafe(cat.name);
       if (!cache.endpoints.has(`cat_${catKey}_capacity`)) {
-        console.log(`[spinal] New active category '${cat.name}' on parking ${entry.id} – creating endpoints`);
+        console.log(`[spinal] Category '${cat.name}' on parking ${entry.id} – creating endpoints`);
         await this.ensureCategoryEndpoints(cache, catKey);
       }
     }
@@ -363,7 +379,6 @@ export class SyncService {
     ];
 
     for (const cat of entry.categoriesInfo) {
-      if (cat.capacity <= 0) continue;
       const k = this.catSafe(cat.name);
       updates.push(
         this.setEp(cache, `cat_${k}_capacity`,    cat.capacity),
