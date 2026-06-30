@@ -472,7 +472,7 @@ export class SyncService {
       InputDataEndpointDataType.Integer,
       InputDataEndpointType.Other
     );
-    const ref = await this.nwService.createNewBmsEndpointWithoutContext(deviceNode.getId().get(), model);
+    const ref = await this.nwService.createNewBmsEndpoint(deviceNode.getId().get(), model);
     return SpinalGraphService.getRealNode(ref.id.get());
   }
 
